@@ -1,0 +1,4 @@
+import { isAuthenticated, unauthorized } from "@/lib/http";
+import { subscribe } from "@/lib/events";
+export const dynamic = "force-dynamic";
+export async function GET(request: Request) { if (!await isAuthenticated()) return unauthorized(); const encoder = new TextEncoder(); let close = () => {}; const stream = new ReadableStream({ start(controller) { const send = (paths:string[]) => controller.enqueue(encoder.encode(`event: vault\ndata: ${JSON.stringify({paths})}\n\n`)); const unsubscribe = subscribe(send); const timer = setInterval(() => controller.enqueue(encoder.encode(": ping\n\n")), 15_000); close = () => { clearInterval(timer); unsubscribe(); try { controller.close(); } catch {} }; request.signal.addEventListener("abort", close); }, cancel(){ close(); } }); return new Response(stream,{headers:{"Content-Type":"text/event-stream","Cache-Control":"no-cache, no-transform","X-Content-Type-Options":"nosniff"}}); }

@@ -1,0 +1,6 @@
+import { isAuthenticated, unauthorized } from "@/lib/http";
+import { publish } from "@/lib/events";
+import { buildImportedNote, convertDocument, MAX_UPLOAD, saveOriginalPdf, slugify } from "@/lib/ingestion";
+import { writeNotes } from "@/lib/vault";
+export const runtime = "nodejs";
+export async function POST(request: Request) { if (!await isAuthenticated()) return unauthorized(); try { const length = Number(request.headers.get("content-length") || 0); if (length > MAX_UPLOAD + 1_000_000) throw new Error("Document exceeds 25MB"); const form = await request.formData(), file = form.get("file"); if (!(file instanceof File)) throw new Error("Document required"); if (file.size > MAX_UPLOAD) throw new Error("Document exceeds 25MB"); const buffer = Buffer.from(await file.arrayBuffer()); const isPdf = file.name.toLowerCase().endsWith(".pdf"); const markdown = await convertDocument(file.name, buffer); const slug = slugify(file.name); if (isPdf) await saveOriginalPdf(slug, buffer); const note = buildImportedNote({ title: file.name, source: file.name, sourceType: "file", markdown, hasPdf: isPdf }); await writeNotes([note]); publish([note.path]); return Response.json({ ...note, hasPdf: isPdf }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Import failed" }, { status: 400 }); } }
